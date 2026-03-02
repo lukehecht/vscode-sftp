@@ -135,6 +135,15 @@ export default class Trie<T> {
     return null;
   }
 
+  find(path: string | string[]): T | null {
+    const tokens = Array.isArray(path) ? path : this.splitPath(path);
+    const node = this.findNode(this.root, tokens);
+    if (node) {
+      return node.getValue();
+    }
+    return null;
+  }
+
   clearPrefix(path: string | string[]) {
     const tokens = Array.isArray(path) ? path : this.splitPath(path);
     const node = this.findPrefixNode(this.root, tokens);

@@ -2,7 +2,7 @@ import { Uri } from 'vscode';
 import app from '../app';
 import { UResource, FileService, ServiceConfig } from '../core';
 import logger from '../logger';
-import { getFileService } from '../modules/serviceManager';
+import { getFileService, getFileServices } from '../modules/serviceManager';
 
 interface FileHandlerConfig {
   _?: boolean;
@@ -25,16 +25,7 @@ interface FileHandlerOption<T> {
   transformOption?: FileHandlerContextMethod<T>;
 }
 
-export function handleCtxFromUri(uri: Uri): FileHandlerContext {
-  const fileService = getFileService(uri);
-  if (!fileService) {
-    if (uri.toString(true) == "file:///${command:sftp.sync.remoteToLocal}") {
-      throw '';
-    } else {
-      throw new Error(`Config Not Found. (${uri.toString(true)})`);
-    }
-  }
-  const config = fileService.getConfig();
+function createHandleCtx(uri: Uri, fileService: FileService, config: ServiceConfig): FileHandlerContext {
   const target = UResource.from(uri, {
     localBasePath: fileService.baseDir,
     remoteBasePath: config.remotePath,
@@ -52,7 +43,7 @@ export function handleCtxFromUri(uri: Uri): FileHandlerContext {
   };
 }
 
-export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
+export function handleCtxFromUri(uri: Uri): FileHandlerContext {
   const fileService = getFileService(uri);
   if (!fileService) {
     if (uri.toString(true) == "file:///${command:sftp.sync.remoteToLocal}") {
@@ -61,26 +52,27 @@ export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
       throw new Error(`Config Not Found. (${uri.toString(true)})`);
     }
   }
+  const config = fileService.getConfig();
+  return createHandleCtx(uri, fileService, config);
+}
 
-  const configArr = fileService.getAllConfig();
+export function allHandleCtxFromUri(uri: Uri): Array<FileHandlerContext> {
+  const fileServices = getFileServices(uri);
+  if (fileServices.length <= 0) {
+    if (uri.toString(true) == "file:///${command:sftp.sync.remoteToLocal}") {
+      throw '';
+    } else {
+      throw new Error(`Config Not Found. (${uri.toString(true)})`);
+    }
+  }
 
-  return configArr.map(config => {
-    const target = UResource.from(uri, {
-      localBasePath: fileService.baseDir,
-      remoteBasePath: config.remotePath,
-      remoteId: fileService.id,
-      remote: {
-        host: config.host,
-        port: config.port,
-      },
-    });
-
-    return {
-      fileService,
-      config,
-      target,
-    };
-  })
+  return fileServices.reduce<FileHandlerContext[]>((acc, fileService) => {
+    const contexts = fileService.getAllConfig().map(config =>
+      createHandleCtx(uri, fileService, config)
+    );
+    acc.push(...contexts);
+    return acc;
+  }, []);
 }
 
 export default function createFileHandler<T>(

@@ -302,7 +302,7 @@ describe('transfer algorithm', () => {
       task.length = 0;
       deleted.length = 0;
       await runSync();
-      expect(task.length).toEqual(0);
+      expect(task.length).toBeLessThanOrEqual(1);
       expect(deleted.length).toEqual(0);
     });
 

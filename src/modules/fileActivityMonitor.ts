@@ -8,11 +8,12 @@ import { readConfigsFromFile } from './config';
 import {
   createFileService,
   getFileService,
+  getFileServices,
   findAllFileService,
   disposeFileService,
 } from './serviceManager';
 import { reportError, isValidFile, isConfigFile, isInWorkspace } from '../helper';
-import { downloadFile, uploadFile } from '../fileHandlers';
+import { allHandleCtxFromUri, downloadFile, uploadFile } from '../fileHandlers';
 
 let workspaceWatcher: vscode.Disposable;
 
@@ -39,22 +40,25 @@ async function handleConfigSave(uri: vscode.Uri) {
 }
 
 async function handleFileSave(uri: vscode.Uri) {
-  const fileService = getFileService(uri);
-  if (!fileService) {
+  const fileServices = getFileServices(uri);
+  if (fileServices.length <= 0) {
     return;
   }
 
-  const config = fileService.getConfig();
-  if (config.uploadOnSave) {
-    const fspath = await realpathSync.native(uri.fsPath);
-    uri = vscode.Uri.file(fspath);
-    logger.info(`[file-save] ${fspath}`);
-    try {
-      await uploadFile(uri);
-    } catch (error) {
-      logger.error(error, `download ${fspath}`);
-      app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
-    }
+  const fspath = await realpathSync.native(uri.fsPath);
+  uri = vscode.Uri.file(fspath);
+  logger.info(`[file-save] ${fspath}`);
+
+  const contexts = allHandleCtxFromUri(uri).filter(ctx => ctx.config.uploadOnSave);
+  if (contexts.length <= 0) {
+    return;
+  }
+
+  try {
+    await Promise.all(contexts.map(ctx => uploadFile(ctx)));
+  } catch (error) {
+    logger.error(error, `download ${fspath}`);
+    app.sftpBarItem.updateStatus(StatusBarItem.Status.error);
   }
 }
 

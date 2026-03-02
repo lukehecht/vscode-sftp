@@ -163,7 +163,7 @@ _Note：_ `context` and `watcher` are only available at root level.
 Use `SFTP: Set Profile` to switch profile.
 
 ### Multiple Context
-The context must **not be same**.
+You can define multiple destinations in one `sftp.json` array. If multiple entries share the same `context`, upload commands and `uploadOnSave` can target all of them.
 ```json
 [
   {

@@ -11,12 +11,17 @@ import Trie from './trie';
 const WIN_DRIVE_REGEX = /^([a-zA-Z]):/;
 const isWindows = process.platform === 'win32';
 
-const serviceManager = new Trie<FileService>(
+const serviceManager = new Trie<FileService[]>(
   {},
   {
     delimiter: path.sep,
   }
 );
+
+function isPathInBase(pathname: string, basePath: string) {
+  const relative = path.relative(basePath, pathname);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
 
 function maskConfig(config) {
   const copy = {};
@@ -95,7 +100,12 @@ export function createFileService(config: any, workspace: string) {
 
   logger.info(`config at ${normalizedBasePath}`, maskConfig(config));
 
-  serviceManager.add(normalizedBasePath, service);
+  const current = serviceManager.find(normalizedBasePath);
+  if (current) {
+    current.push(service);
+  } else {
+    serviceManager.add(normalizedBasePath, [service]);
+  }
   service.name = config.name;
   service.setConfigValidator(validateConfig);
   service.setWatcherService(watcherService);
@@ -128,21 +138,44 @@ export function createFileService(config: any, workspace: string) {
 }
 
 export function getFileService(uri: Uri): FileService {
-  let fileService;
+  const fileServices = getFileServices(uri);
+  return fileServices.length > 0 ? fileServices[0] : (null as any);
+}
+
+export function getFileServices(uri: Uri): FileService[] {
   if (UResource.isRemote(uri)) {
     const remoteRoot = app.remoteExplorer.findRoot(uri);
     if (remoteRoot) {
-      fileService = remoteRoot.explorerContext.fileService;
+      return [remoteRoot.explorerContext.fileService];
     }
-  } else {
-    fileService = serviceManager.findPrefix(normalizePathForTrie(uri.fsPath));
+    return [];
   }
 
-  return fileService;
+  const normalizedPath = normalizePathForTrie(uri.fsPath);
+  const matchedServices = getAllFileService().filter(service =>
+    isPathInBase(normalizedPath, service.baseDir)
+  );
+  if (matchedServices.length <= 0) {
+    return [];
+  }
+
+  const longestPathLength = matchedServices.reduce((result, service) =>
+    Math.max(result, service.baseDir.length), 0
+  );
+  return matchedServices.filter(service => service.baseDir.length === longestPathLength);
 }
 
 export function disposeFileService(fileService: FileService) {
-  serviceManager.remove(fileService.baseDir);
+  const sameBaseServices = serviceManager.find(fileService.baseDir);
+  if (sameBaseServices) {
+    const targetIndex = sameBaseServices.findIndex(current => current === fileService);
+    if (targetIndex >= 0) {
+      sameBaseServices.splice(targetIndex, 1);
+    }
+    if (sameBaseServices.length <= 0) {
+      serviceManager.remove(fileService.baseDir);
+    }
+  }
   fileService.dispose();
 }
 
@@ -159,7 +192,10 @@ export function getAllFileService(): FileService[] {
     return [];
   }
 
-  return serviceManager.getAllValues();
+  return serviceManager.getAllValues().reduce<FileService[]>((acc, value) => {
+    acc.push(...value);
+    return acc;
+  }, []);
 }
 
 export function getRunningTransformTasks(): TransferTask[] {

@@ -21,6 +21,7 @@ logs
 node_modules
 build/Release
 .npm
+.npm-cache/
 
 ### Yarn ###
 .yarn/*
